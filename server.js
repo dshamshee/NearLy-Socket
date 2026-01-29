@@ -13,66 +13,97 @@ const io = new Server(httpServer, {
 });
 
 
-// State management
-const activeWorkers = new Map(); // workerId -> socketId
-const activeBookings = new Map(); // bookingId -> { customerSocketId, workerId, status }
+// ... existing imports and setup ...
+
+const activeWorkers = new Map(); 
+const activeBookings = new Map(); 
 
 io.on("connection", (socket) => {
-  // 1. Worker joins and registers their ID
+  
   socket.on("register-active-worker", (workerId) => {
     socket.workerId = workerId;
     activeWorkers.set(workerId, socket.id);
-    console.log(`Worker ${workerId} is active`);
+    console.log("Worker registered:", workerId);
   });
 
-  // 2. Customer broadcasts to specific nearby workers
-  socket.on("notify-nearby-workers", ({ bookingId, workerIds, jobDetails }) => {
-    activeBookings.set(bookingId, { customerSocketId: socket.id, status: "pending" });
-    
-    workerIds.forEach(id => {
-      const socketId = activeWorkers.get(id);
-      if (socketId) {
-        io.to(socketId).emit("new-job-request", { bookingId, ...jobDetails });
-      }
-    });
-  });
-
-  // 3. Worker Accepts: Logic to disable for others
-  socket.on("accept-booking", ({ bookingId, workerId }) => {
-    const booking = activeBookings.get(bookingId);
-    if (booking && booking.status === "pending") {
-      booking.status = "accepted";
-      booking.workerId = workerId;
-
-      // Notify the specific customer
-      io.to(booking.customerSocketId).emit("booking-accepted", { workerId });
-      // Notify ALL other workers to hide the request
-      socket.broadcast.emit("booking-filled", { bookingId });
+  socket.on("unregister-active-worker", (workerId) => {
+    if (activeWorkers.has(workerId)) {
+      activeWorkers.delete(workerId);
+      console.log("Worker unregistered:", workerId);
     }
   });
 
-  // 4. Live Tracking: Targeted only to the assigned customer
+  // NEW: Customer sends request to ONE specific worker
+  socket.on("send-booking-request", ({ bookingId, selectedWorkerId, jobDetails }) => {
+    console.log("Received booking request:", { bookingId, selectedWorkerId, customerSocketId: socket.id });
+    
+    if (!bookingId || !selectedWorkerId || !jobDetails) {
+      console.error("Invalid booking request data:", { bookingId, selectedWorkerId, jobDetails });
+      socket.emit("booking-request-error", { message: "Invalid booking request data" });
+      return;
+    }
+
+    activeBookings.set(bookingId, { 
+        customerSocketId: socket.id, 
+        workerId: selectedWorkerId,
+        status: "pending" 
+    });
+
+    const targetSocketId = activeWorkers.get(selectedWorkerId);
+    console.log("Active workers map:", Array.from(activeWorkers.entries()));
+    console.log("Looking for worker:", selectedWorkerId);
+    console.log("Target socket ID:", targetSocketId);
+    
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("incoming-request", { bookingId, jobDetails });
+      console.log("Booking request sent to worker:", targetSocketId);
+    } else {
+      console.warn("Worker not found in active workers:", selectedWorkerId);
+      socket.emit("booking-request-error", { message: "Worker is not currently active" });
+    }
+  });
+
+  socket.on("accept-booking", ({ bookingId }) => {
+    const booking = activeBookings.get(bookingId);
+    if (booking) {
+      booking.status = "accepted";
+      io.to(booking.customerSocketId).emit("booking-confirmed", { msg: "Worker accepted!" });
+    }
+  });
+
+  // Triggered when worker clicks "Out for Service"
+  socket.on("start-navigation", ({ bookingId }) => {
+    const booking = activeBookings.get(bookingId);
+    if (booking) {
+      booking.status = "in-transit";
+      io.to(booking.customerSocketId).emit("worker-started-navigation");
+    }
+  });
+
   socket.on("update-location", ({ workerId, location }) => {
+    // Find the active booking for this worker that is 'in-transit'
     for (let [id, data] of activeBookings.entries()) {
-      if (data.workerId === workerId && data.status === "accepted") {
+      if (data.workerId === workerId && data.status === "in-transit") {
         io.to(data.customerSocketId).emit("location-broadcast", location);
       }
     }
   });
 
-  // 5. Completion: Stop tracking
   socket.on("confirm-reached", ({ bookingId }) => {
     const booking = activeBookings.get(bookingId);
     if (booking) {
-      booking.status = "reached";
       io.to(booking.customerSocketId).emit("worker-arrived");
       activeBookings.delete(bookingId);
     }
   });
 
-  socket.on("disconnect", () => activeWorkers.delete(socket.workerId));
+  socket.on("disconnect", () => {
+    if (socket.workerId) {
+      activeWorkers.delete(socket.workerId);
+      console.log("Worker disconnected:", socket.workerId);
+    }
+  });
 });
-
 
 
 httpServer.listen(4000, () => console.log("Tracking server on :4000"));
