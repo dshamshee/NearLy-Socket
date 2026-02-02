@@ -1,12 +1,13 @@
 import dbConnect from "./config/dbConnection";
 import ActiveBookingsModel from "./model/activeBookings";
 import ActiveWorkersModel from "./model/activeWorkers";
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const express = require("express");
-const { createServer } = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
-require("dotenv").config();
 
 
 // const checkDBConnection = async ()=>{
@@ -44,12 +45,24 @@ io.on("connection", (socket) => {
   socket.on("register-active-worker", async (workerId) => {
 try {
       await dbConnect();
-      socket.workerId = workerId;
-      await ActiveWorkersModel.create({
+      const existingWorker = await ActiveWorkersModel.findOne({workerId: workerId});
+      if (existingWorker) {
+        // Worker exists but might have reconnected with a new socketId - update it
+        existingWorker.socketId = socket.id;
+        await existingWorker.save();
+        (socket as any).workerId = workerId;
+        console.log("Worker re-registered with new socket:", workerId, socket.id);
+        return;
+      }
+
+
+      (socket as any).workerId = workerId;
+      const newWorker = await ActiveWorkersModel.create({
         workerId: workerId,
         socketId: socket.id,
-      })
-      console.log("Worker registered:", workerId);
+      });
+      await newWorker.save();
+      console.log("Worker registered:", workerId, socket.id);
 } catch (error: unknown) {
   console.log(error instanceof Error ? error.message : "Internal Server Error on register-active-worker");
   socket.emit("register-active-worker-error", { message: "Internal Server Error on register-active-worker" });
@@ -59,6 +72,16 @@ try {
   socket.on("unregister-active-worker", async (workerId) => {
 try {
       await dbConnect();
+
+      const existingWorker = await ActiveWorkersModel.findOne({workerId: workerId});
+
+      if(!existingWorker){
+        console.warn("Active Worker not found:", workerId);
+        socket.emit("unregister-active-worker-error", { message: "Worker not registered" });
+        return; // Do not proceed if worker is not found
+      }
+
+
       await ActiveWorkersModel.deleteOne({workerId: workerId});
       console.log("Worker unregistered:", workerId);
 } catch (error: unknown) {
@@ -174,11 +197,11 @@ try {
   socket.on("disconnect", async () => {
   try {
       await dbConnect();
-      if (socket.workerId) {
-        await ActiveWorkersModel.deleteOne({workerId: socket.workerId});
-        console.log("Worker disconnected:", socket.workerId);
+      if ((socket as any).workerId) {
+        await ActiveWorkersModel.deleteOne({workerId: (socket as any).workerId});
+        console.log("Worker disconnected:", (socket as any).workerId);
       } else {
-        console.warn("Worker not found:", socket.workerId);
+        console.warn("Worker not found:", (socket as any).workerId);
         socket.emit("booking-request-error", { message: "Worker not found" });
       }
   } catch (error: unknown) {
@@ -190,5 +213,8 @@ try {
 
 });
 
+app.get("/", (req, res) => {
+  res.send("Tracking server is running");
+});
 
 httpServer.listen(4000, () => console.log("Tracking server on :4000"));
