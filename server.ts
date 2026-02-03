@@ -90,6 +90,29 @@ try {
 }
   });
 
+  // Update customer socket ID for a specific booking (useful when customer reconnects)
+  socket.on("update-customer-socket", async ({ bookingId }) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOneAndUpdate(
+        { bookingId: bookingId },
+        { customerSocketId: socket.id },
+        { new: true }
+      );
+      
+      if (booking) {
+        console.log("Updated customer socket for booking:", bookingId, "New socket:", socket.id);
+        socket.emit("customer-socket-updated", { success: true });
+      } else {
+        console.warn("Booking not found for socket update:", bookingId);
+        socket.emit("customer-socket-update-error", { message: "Booking not found" });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on update-customer-socket");
+      socket.emit("customer-socket-update-error", { message: "Internal Server Error on update-customer-socket" });
+    }
+  });
+
   // NEW: Customer sends request to ONE specific worker
   socket.on("send-booking-request", async ({ bookingId, selectedWorkerId, jobDetails }) => {
     try {
@@ -102,12 +125,24 @@ try {
         return;
       }
   
-      await ActiveBookingsModel.create({ 
-        bookingId: bookingId,
+      // Check if booking already exists (customer might have reconnected)
+      const existingBooking = await ActiveBookingsModel.findOne({ bookingId: bookingId });
+      
+      if (existingBooking) {
+        // Update customerSocketId in case customer reconnected with new socket
+        existingBooking.customerSocketId = socket.id;
+        await existingBooking.save();
+        console.log("Updated existing booking with new customer socket:", bookingId, socket.id);
+      } else {
+        // Create new booking
+        await ActiveBookingsModel.create({ 
+          bookingId: bookingId,
           customerSocketId: socket.id, 
           workerId: selectedWorkerId,
           status: "pending" 
-      });
+        });
+        console.log("Created new booking:", bookingId);
+      }
   
       const targetSocketId = await ActiveWorkersModel.findOne({workerId: selectedWorkerId});
       if (targetSocketId) {
@@ -126,13 +161,19 @@ try {
   socket.on("accept-booking", async ({ bookingId }) => {
    try {
      await dbConnect();
-     const booking = await ActiveBookingsModel.findOneAndUpdate({bookingId: bookingId}, {status: "accepted"});
-     if (booking) {
-       booking.status = "accepted";
+     // Update booking status and get the updated document
+     const booking = await ActiveBookingsModel.findOneAndUpdate(
+       {bookingId: bookingId}, 
+       {status: "accepted"},
+       {new: true} // Return the updated document
+     );
+     
+     if (booking && booking.customerSocketId) {
+       // Emit confirmation to customer
        io.to(booking.customerSocketId).emit("booking-confirmed", { msg: "Worker accepted!" });
-       console.log("Booking accepted:", bookingId);
+       console.log("Booking accepted:", bookingId, "Customer socket:", booking.customerSocketId);
      } else {
-       console.warn("Booking not found:", bookingId);
+       console.warn("Booking not found or missing customerSocketId:", bookingId);
        socket.emit("booking-request-error", { message: "Booking not found" });
      }
    } catch (error: unknown) {
