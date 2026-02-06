@@ -191,12 +191,12 @@ try {
        io.to(booking.customerSocketId).emit("worker-started-navigation");
        console.log("Worker started navigation:", bookingId);
      } else {
-       console.warn("Booking not found:", bookingId);
-       socket.emit("booking-request-error", { message: "Booking not found" });
+       console.warn("something went wrong on start-navigation");
+       socket.emit("start-navigation-error", { message: "something went wrong on start-navigation" });
      }
    } catch (error: unknown) {
     console.log(error instanceof Error ? error.message : "Internal Server Error on start-navigation");
-    socket.emit("booking-request-error", { message: "Internal Server Error on start-navigation" });
+    socket.emit("start-navigation-error", { message: "Internal Server Error on start-navigation" });
    }
   });
 
@@ -210,11 +210,11 @@ try {
        console.log("Location broadcasted to customer:", booking.customerSocketId);
      } else {
        console.warn("Worker not found:", workerId);
-       socket.emit("booking-request-error", { message: "Booking not found" });
+       socket.emit("update-location-error", { message: "Worker not found" });
      }
    } catch (error: unknown) {
     console.log(error instanceof Error ? error.message : "Internal Server Error on update-location");
-    socket.emit("booking-request-error", { message: "Internal Server Error on update-location" });
+    socket.emit("update-location-error", { message: "Internal Server Error on update-location" });
    }
   });
 
@@ -227,11 +227,11 @@ try {
         console.log("Worker arrived:", bookingId);
       } else {
         console.warn("Booking not found:", bookingId);
-        socket.emit("booking-request-error", { message: "Booking not found" });
+        socket.emit("confirm-reached-error", { message: "Booking not found" });
       }
     } catch (error: unknown) {
     console.log(error instanceof Error ? error.message : "Internal Server Error on confirm-reached");
-    socket.emit("booking-request-error", { message: "Internal Server Error on confirm-reached" });
+    socket.emit("confirm-reached-error", { message: "Internal Server Error on confirm-reached" });
     }
   });
 
