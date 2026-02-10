@@ -1,0 +1,71 @@
+# Environment variables (should be passed at runtime, not baked into image)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies (will be installed in container)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lockb
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Docker files
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test files
+test/
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+test.js
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+.editorconfig
+.prettierrc
+.eslintrc*

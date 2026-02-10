@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  tracking:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nearly-tracking
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Optional: You can also override specific env vars here if needed
+    # environment:
+    #   - MONGODB_URI=${MONGODB_URI}
+    #   - NEARLY_CLIENT_URL=${NEARLY_CLIENT_URL}
