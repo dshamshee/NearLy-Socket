@@ -45,20 +45,25 @@ io.on("connection", (socket) => {
   socket.on("register-active-worker", async (workerId) => {
 try {
       await dbConnect();
-      const existingWorker = await ActiveWorkersModel.findOne({workerId: workerId});
+      const normalizedId = String(workerId ?? "").trim();
+      if (!normalizedId) {
+        console.warn("register-active-worker: empty workerId");
+        return;
+      }
+      const existingWorker = await ActiveWorkersModel.findOne({workerId: normalizedId});
       if (existingWorker) {
         // Worker exists but might have reconnected with a new socketId - update it
         existingWorker.socketId = socket.id;
         await existingWorker.save();
-        (socket as any).workerId = workerId;
-        console.log("Worker re-registered with new socket:", workerId, socket.id);
+        (socket as any).workerId = normalizedId;
+        console.log("Worker re-registered with new socket:", normalizedId, socket.id);
         return;
       }
 
 
-      (socket as any).workerId = workerId;
+      (socket as any).workerId = normalizedId;
       const newWorker = await ActiveWorkersModel.create({
-        workerId: workerId,
+        workerId: normalizedId,
         socketId: socket.id,
       });
       await newWorker.save();
@@ -114,14 +119,22 @@ try {
   });
 
   // NEW: Customer sends request to ONE specific worker
-  socket.on("send-booking-request", async ({ bookingId, selectedWorkerId, jobDetails }) => {
+  socket.on("send-booking-request", async ({ bookingId, selectedWorkerId, jobDetails }, ack) => {
+    const sendError = (message: string) => {
+      if (typeof ack === "function") {
+        ack({ error: message });
+      } else {
+        socket.emit("booking-request-error", { message });
+      }
+    };
+
     try {
       await dbConnect();
       console.log("Received booking request:", { bookingId, selectedWorkerId, customerSocketId: socket.id });
       
       if (!bookingId || !selectedWorkerId || !jobDetails) {
         console.error("Invalid booking request data:", { bookingId, selectedWorkerId, jobDetails });
-        socket.emit("booking-request-error", { message: "Invalid booking request data" });
+        sendError("Invalid booking request data");
         return;
       }
   
@@ -130,7 +143,11 @@ try {
       
       if (existingBooking) {
         // Update customerSocketId in case customer reconnected with new socket
+        // Reset status to "pending" if booking was previously rejected (customer retrying)
         existingBooking.customerSocketId = socket.id;
+        if (existingBooking.status === "rejected") {
+          existingBooking.status = "pending";
+        }
         await existingBooking.save();
         console.log("Updated existing booking with new customer socket:", bookingId, socket.id);
       } else {
@@ -144,17 +161,22 @@ try {
         console.log("Created new booking:", bookingId);
       }
   
-      const targetSocketId = await ActiveWorkersModel.findOne({workerId: selectedWorkerId});
+      // Normalize workerId to string for comparison (handles ObjectId serialization differences)
+      const normalizedWorkerId = String(selectedWorkerId).trim();
+      const targetSocketId = await ActiveWorkersModel.findOne({ workerId: normalizedWorkerId });
       if (targetSocketId) {
         io.to(targetSocketId.socketId).emit("incoming-request", { bookingId, jobDetails });
         console.log("Booking request sent to worker:", targetSocketId.socketId);
+        if (typeof ack === "function") {
+          ack({ success: true });
+        }
       } else {
         console.warn("Worker not found in active workers:", selectedWorkerId);
-        socket.emit("booking-request-error", { message: "Worker is not currently active" });
+        sendError("Worker is not currently active");
       }
     } catch (error: unknown) {
-      console.log(error instanceof Error ? error.message : "Internal Server Error on send-booking-request");
-      socket.emit("booking-request-error", { message: "Internal Server Error on send-booking-request" });
+      console.error("send-booking-request error:", error);
+      sendError("Internal Server Error on send-booking-request");
     }
   });
 
@@ -180,6 +202,27 @@ try {
     console.log(error instanceof Error ? error.message : "Internal Server Error on accept-booking");
     socket.emit("booking-request-error", { message: "Internal Server Error on accept-booking" });
    }
+  });
+
+
+  // Triggered when worker rejects the booking
+  socket.on('reject-booking', async({bookingId}) => {
+    console.log('console 1')
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOneAndUpdate({bookingId: bookingId}, {status: "rejected"});
+      if (booking) {
+        console.log('console 2')
+        io.to(booking.customerSocketId).emit("booking-rejected", { msg: "Booking rejected by worker" });
+        // console.log("Booking rejected:", bookingId, "Customer socket:", booking.customerSocketId);
+      } else {
+        console.warn("Booking not found or missing customerSocketId:", bookingId);
+        socket.emit("booking-rejected-error", { message: "Booking not found" });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on reject-booking");
+      socket.emit("booking-rejected-error", { message: "Internal Server Error on reject-booking" });
+    }
   });
 
   // Triggered when worker clicks "Out for Service"
