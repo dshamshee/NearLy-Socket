@@ -243,6 +243,7 @@ try {
    }
   });
 
+  // Triggered when worker updates their location
   socket.on("update-location", async ({ workerId, location }) => {
    try {
      await dbConnect();
@@ -261,6 +262,7 @@ try {
    }
   });
 
+  // Triggered when worker confirms they have reached the destination
   socket.on("confirm-reached", async ({ bookingId }) => {
     try {
       await dbConnect();
@@ -277,6 +279,42 @@ try {
     socket.emit("confirm-reached-error", { message: "Internal Server Error on confirm-reached" });
     }
   });
+
+
+  // Triggered when worker request for the payment
+  socket.on('request-payment', async ({bookingId, amount}, ack) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
+      if (booking) {
+        io.to(booking.customerSocketId).emit("payment-requested", { amount });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on request-payment");
+      socket.emit("payment-request-error", { message: "Internal Server Error on request-payment" });
+    }
+  })
+
+  // Triggered when customer confirms the payment
+  socket.on('confirm-payment', async ({bookingId, paymentId, orderId, amount}, ack) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
+      if (booking) {
+        const activeWorkerSocketId = await ActiveWorkersModel.findOne({workerId: booking.workerId});
+        if (activeWorkerSocketId) {
+          io.to(activeWorkerSocketId.socketId).emit("payment-confirmed", { paymentId, orderId, amount });
+          console.log("Payment confirmed:", paymentId, orderId, amount);
+        }
+      } else {
+        console.warn("Booking not found:", bookingId);
+        socket.emit("payment-confirm-error", { message: "Booking not found" });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on confirm-payment");
+      socket.emit("payment-confirm-error", { message: "Internal Server Error on confirm-payment" });
+    }
+  })
 
   socket.on("disconnect", async () => {
   try {
