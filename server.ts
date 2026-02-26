@@ -13,13 +13,13 @@ dotenv.config();
 // const checkDBConnection = async ()=>{
 //   try {
 //     await dbConnect();
-//     console.log("DB Connected Successfully");
+    // console.log("DB Connected Successfully");
 //     return true;
 //   } catch (error: unknown) {
-//     console.log(error instanceof Error ? error.message : "Internal Server Error on checkDBConnection");
+    // console.log(error instanceof Error ? error.message : "Internal Server Error on checkDBConnection");
 //     return false;
 //   } finally {
-//     console.log("DB Connection Checked");
+    // console.log("DB Connection Checked");
 //   }
 // }
 
