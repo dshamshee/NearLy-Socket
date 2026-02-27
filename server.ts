@@ -282,7 +282,7 @@ try {
 
 
   // Triggered when worker request for the payment
-  socket.on('request-payment', async ({bookingId, amount}, ack) => {
+  socket.on('request-payment', async ({bookingId, amount}) => {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
@@ -296,23 +296,24 @@ try {
   })
 
   // Triggered when customer confirms the payment
-  socket.on('confirm-payment', async ({bookingId, paymentId, orderId, amount}, ack) => {
+  socket.on('confirm-payment', async ({bookingId, paymentId, orderId, amount}) => {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
       if (booking) {
         const activeWorkerSocketId = await ActiveWorkersModel.findOne({workerId: booking.workerId});
         if (activeWorkerSocketId) {
-          io.to(activeWorkerSocketId.socketId).emit("payment-confirmed", { paymentId, orderId, amount });
-          console.log("Payment confirmed:", paymentId, orderId, amount);
+          io.to(activeWorkerSocketId.socketId).emit("payment-received", { paymentId, orderId, amount });
+          console.log("Payment received:", paymentId, orderId, amount);
         }
       } else {
         console.warn("Booking not found:", bookingId);
-        socket.emit("payment-confirm-error", { message: "Booking not found" });
+        socket.emit("payment-error", { message: "Booking not found" });
       }
     } catch (error: unknown) {
       console.log(error instanceof Error ? error.message : "Internal Server Error on confirm-payment");
-      socket.emit("payment-confirm-error", { message: "Internal Server Error on confirm-payment" });
+      socket.emit("payment-error", { message: "Internal Server Error on confirm-payment" });
+      console.log("Payment error:", error);
     }
   })
 
