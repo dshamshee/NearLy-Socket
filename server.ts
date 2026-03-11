@@ -295,6 +295,21 @@ try {
     }
   })
 
+  // Triggered when customer completes Razorpay payment (from payment tab)
+  socket.on('customer-razorpay-payment-result', async ({ bookingId, success }) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({ bookingId });
+      if (booking?.customerSocketId) {
+        console.log("socket is run when details saved")
+        io.to(booking.customerSocketId).emit('customer-payment-result', { bookingId, success });
+        console.log('Customer payment result forwarded:', bookingId, success);
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : 'Internal Server Error on customer-razorpay-payment-result');
+    }
+  });
+
   // Triggered when customer confirms the payment
   socket.on('confirm-payment', async ({bookingId, paymentId, orderId, amount}) => {
     try {
