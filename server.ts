@@ -28,6 +28,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -207,14 +208,12 @@ try {
 
   // Triggered when worker rejects the booking
   socket.on('reject-booking', async({bookingId}) => {
-    console.log('console 1')
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOneAndUpdate({bookingId: bookingId}, {status: "rejected"});
-      if (booking) {
-        console.log('console 2')
+      if (booking?.customerSocketId) {
         io.to(booking.customerSocketId).emit("booking-rejected", { msg: "Booking rejected by worker" });
-        // console.log("Booking rejected:", bookingId, "Customer socket:", booking.customerSocketId);
+        console.log("Booking rejected:", bookingId);
       } else {
         console.warn("Booking not found or missing customerSocketId:", bookingId);
         socket.emit("booking-rejected-error", { message: "Booking not found" });
@@ -230,12 +229,12 @@ try {
    try {
      await dbConnect();
      const booking = await ActiveBookingsModel.findOneAndUpdate({bookingId: bookingId}, {status: "in-transit"});
-     if (booking) {
+     if (booking?.customerSocketId) {
        io.to(booking.customerSocketId).emit("worker-started-navigation");
        console.log("Worker started navigation:", bookingId);
      } else {
-       console.warn("something went wrong on start-navigation");
-       socket.emit("start-navigation-error", { message: "something went wrong on start-navigation" });
+       console.warn("Booking not found or missing customerSocketId:", bookingId);
+       socket.emit("start-navigation-error", { message: "Booking not found" });
      }
    } catch (error: unknown) {
     console.log(error instanceof Error ? error.message : "Internal Server Error on start-navigation");
@@ -247,14 +246,13 @@ try {
   socket.on("update-location", async ({ workerId, location }) => {
    try {
      await dbConnect();
-     // Find the active booking for this worker that is 'in-transit'
-     const booking = await ActiveBookingsModel.findOne({workerId: workerId, status: "in-transit"});
-     if (booking) {
+     const booking = await ActiveBookingsModel.findOne({workerId: String(workerId).trim(), status: "in-transit"});
+     if (booking?.customerSocketId) {
        io.to(booking.customerSocketId).emit("location-broadcast", location);
        console.log("Location broadcasted to customer:", booking.customerSocketId);
      } else {
-       console.warn("Worker not found:", workerId);
-       socket.emit("update-location-error", { message: "Worker not found" });
+       console.warn("Booking not found for worker:", workerId);
+       socket.emit("update-location-error", { message: "Booking not found" });
      }
    } catch (error: unknown) {
     console.log(error instanceof Error ? error.message : "Internal Server Error on update-location");
@@ -267,11 +265,11 @@ try {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOneAndUpdate({bookingId: bookingId}, {status: "completed"});
-      if (booking) {
+      if (booking?.customerSocketId) {
         io.to(booking.customerSocketId).emit("worker-arrived");
         console.log("Worker arrived:", bookingId);
       } else {
-        console.warn("Booking not found:", bookingId);
+        console.warn("Booking not found or missing customerSocketId:", bookingId);
         socket.emit("confirm-reached-error", { message: "Booking not found" });
       }
     } catch (error: unknown) {
@@ -286,8 +284,12 @@ try {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
-      if (booking) {
+      if (booking?.customerSocketId) {
         io.to(booking.customerSocketId).emit("payment-requested", { amount });
+        console.log("Payment requested for booking:", bookingId);
+      } else {
+        console.warn("Booking not found or missing customerSocketId:", bookingId);
+        socket.emit("payment-request-error", { message: "Booking not found" });
       }
     } catch (error: unknown) {
       console.log(error instanceof Error ? error.message : "Internal Server Error on request-payment");
@@ -300,8 +302,9 @@ try {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOne({ bookingId });
+      console.log("socket is run when details saved")
+      console.log(booking)
       if (booking?.customerSocketId) {
-        console.log("socket is run when details saved")
         io.to(booking.customerSocketId).emit('customer-payment-result', { bookingId, success });
         console.log('Customer payment result forwarded:', bookingId, success);
       }
@@ -311,15 +314,15 @@ try {
   });
 
   // Triggered when customer confirms the payment
-  socket.on('confirm-payment', async ({bookingId, paymentId, orderId, amount}) => {
+  socket.on('confirm-payment', async ({bookingId}) => {
     try {
       await dbConnect();
       const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
       if (booking) {
         const activeWorkerSocketId = await ActiveWorkersModel.findOne({workerId: booking.workerId});
         if (activeWorkerSocketId) {
-          io.to(activeWorkerSocketId.socketId).emit("payment-received", { paymentId, orderId, amount });
-          console.log("Payment received:", paymentId, orderId, amount);
+          io.to(activeWorkerSocketId.socketId).emit("payment-received");
+          console.log("Payment received:");
         }
       } else {
         console.warn("Booking not found:", bookingId);
@@ -353,6 +356,30 @@ try {
 
 app.get("/", (req, res) => {
   res.send("Tracking server is running");
+});
+
+// HTTP endpoint for payment API to notify dashboard (more reliable than payment tab socket)
+app.post("/notify-payment-result", async (req, res) => {
+  try {
+    const { bookingId, success } = req.body as { bookingId?: string; success?: boolean };
+    if (!bookingId || typeof success !== "boolean") {
+      res.status(400).json({ error: "bookingId and success required" });
+      return;
+    }
+    await dbConnect();
+    const booking = await ActiveBookingsModel.findOne({ bookingId });
+    if (booking?.customerSocketId) {
+      io.to(booking.customerSocketId).emit("customer-payment-result", { bookingId, success });
+      console.log("Payment result notified via HTTP:", bookingId, success);
+      res.json({ ok: true });
+    } else {
+      console.warn("Booking not found for payment notify:", bookingId);
+      res.status(404).json({ error: "Booking not found" });
+    }
+  } catch (error) {
+    console.error("notify-payment-result error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 httpServer.listen(4000, () => console.log("Tracking server on :4000"));
