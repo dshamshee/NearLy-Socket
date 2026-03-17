@@ -333,7 +333,39 @@ try {
       socket.emit("payment-error", { message: "Internal Server Error on confirm-payment" });
       console.log("Payment error:", error);
     }
-  })
+  });
+
+  // Triggered when worker verifies payment OTP - notify customer to reset dashboard
+  socket.on('confirm-payment-otp', async ({ bookingId }) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({ bookingId });
+      if (booking?.customerSocketId) {
+        io.to(booking.customerSocketId).emit('payment-otp-confirmed', { success: true });
+        console.log('Payment OTP confirmed, customer notified:', bookingId);
+      } else {
+        console.warn('Booking not found or missing customerSocketId for confirm-payment-otp:', bookingId);
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : 'Internal Server Error on confirm-payment-otp');
+    }
+  });
+
+  // Triggered when worker ends the service - notify customer to reset dashboard
+  socket.on('service-ended', async ({ bookingId }) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({ bookingId });
+      if (booking?.customerSocketId) {
+        io.to(booking.customerSocketId).emit('service-ended', { success: true });
+        console.log('Service ended, customer notified:', bookingId);
+      } else {
+        console.warn('Booking not found or missing customerSocketId for service-ended:', bookingId);
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : 'Internal Server Error on service-ended');
+    }
+  });
 
   socket.on("disconnect", async () => {
   try {
@@ -381,5 +413,10 @@ app.post("/notify-payment-result", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+
+app.get("/check-server", (req, res)=>{
+  res.send("Checking server is running");
+})
 
 httpServer.listen(4000, () => console.log("Tracking server on :4000"));

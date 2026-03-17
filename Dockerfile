@@ -1,15 +1,12 @@
-FROM oven/bun:1
+FROM oven/bun:1.3-alpine
 
 WORKDIR /usr/src/app
 
-COPY package.json bun.lock ./
+COPY package.json bun.lock* ./
 
-RUN bun install --production
+RUN bun install --frozen-lockfile --production
 
 COPY . .
-
-# Environment variables will be passed at runtime via docker-compose or docker run
-# No need to set defaults here - they come from .env file or runtime args
 
 EXPOSE 4000
 
