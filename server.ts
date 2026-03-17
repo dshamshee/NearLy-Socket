@@ -367,6 +367,39 @@ try {
     }
   });
 
+
+  // Triggered when worker confirms the OTP verification success
+  socket.on("confirm-payment-otp", async ({bookingId}) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
+      if (booking) {
+        io.to(booking.customerSocketId).emit("payment-otp-confirmed", {success: true});
+        // console.log("Payment OTP confirmed:", bookingId);
+      } else {
+        // console.warn("Booking not found:", bookingId);
+        socket.emit("payment-otp-error", { success: false });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on confirm-payment-otp");
+      socket.emit("payment-otp-error", { success: false });
+      // console.log("Payment OTP error:", error);
+    }
+  })
+
+  // Triggered when worker clicks "End Service" - notify customer to reset their state
+  socket.on("service-ended", async ({ bookingId }) => {
+    try {
+      await dbConnect();
+      const booking = await ActiveBookingsModel.findOne({ bookingId });
+      if (booking?.customerSocketId) {
+        io.to(booking.customerSocketId).emit("service-ended", { success: true });
+      }
+    } catch (error: unknown) {
+      console.log(error instanceof Error ? error.message : "Internal Server Error on service-ended");
+    }
+  });
+
   socket.on("disconnect", async () => {
   try {
       await dbConnect();
