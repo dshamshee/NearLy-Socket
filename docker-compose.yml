@@ -8,10 +8,16 @@ services:
       - "4000:4000"
     env_file:
       - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - HOST=0.0.0.0
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:4000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+    # Required for deployment - ensure these are set in .env:
+    # MONGODB_URI, NEARLY_CLIENT_URL

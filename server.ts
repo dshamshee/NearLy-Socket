@@ -452,4 +452,7 @@ app.get("/check-server", (req, res)=>{
   res.send("Checking server is running");
 })
 
-httpServer.listen(4000, () => console.log("Tracking server on :4000"));
+const PORT = Number(process.env.PORT) || 4000;
+const HOST = process.env.HOST || "0.0.0.0";
+
+httpServer.listen(PORT, HOST, () => console.log(`Tracking server on ${HOST}:${PORT}`));
