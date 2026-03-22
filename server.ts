@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import axios from 'axios';
 dotenv.config();
 
 
@@ -405,6 +406,7 @@ try {
       await dbConnect();
       if ((socket as any).workerId) {
         await ActiveWorkersModel.deleteOne({workerId: (socket as any).workerId});
+        await axios.get(`${process.env.NEARLY_CLIENT_URL}/api/worker/togglestatus/${(socket as any).workerId}`);
         console.log("Worker disconnected:", (socket as any).workerId);
       } else {
         console.warn("Worker not found:", (socket as any).workerId);
