@@ -11,22 +11,6 @@ dotenv.config();
 
 
 
-// const checkDBConnection = async ()=>{
-//   try {
-//     await dbConnect();
-    // console.log("DB Connected Successfully");
-//     return true;
-//   } catch (error: unknown) {
-    // console.log(error instanceof Error ? error.message : "Internal Server Error on checkDBConnection");
-//     return false;
-//   } finally {
-    // console.log("DB Connection Checked");
-//   }
-// }
-
-// checkDBConnection();
-
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -36,11 +20,6 @@ const io = new Server(httpServer, {
   cors: { origin: process.env.NEARLY_CLIENT_URL } 
 });
 
-
-// ... existing imports and setup ...
-
-// const activeWorkers = new Map(); 
-// const activeBookings = new Map(); 
 
 io.on("connection", (socket) => {
   
@@ -206,7 +185,6 @@ try {
    }
   });
 
-
   // Triggered when worker rejects the booking
   socket.on('reject-booking', async({bookingId}) => {
     try {
@@ -284,7 +262,11 @@ try {
   socket.on('request-payment', async ({bookingId, amount}) => {
     try {
       await dbConnect();
-      const booking = await ActiveBookingsModel.findOne({bookingId: bookingId});
+      const booking = await ActiveBookingsModel.findOneAndUpdate(
+        { bookingId: bookingId },
+        { requestedPaymentAmount: amount },
+        { new: true }
+      );
       if (booking?.customerSocketId) {
         io.to(booking.customerSocketId).emit("payment-requested", { amount });
         console.log("Payment requested for booking:", bookingId);

@@ -5,6 +5,7 @@ export interface ActiveBookings{
     customerSocketId: string;
     workerId: string;
     status: "pending" | "accepted" | "rejected" | "in-transit" | "completed" | "cancelled";
+    requestedPaymentAmount?: number;
     createdAt: Date;
 }
 
@@ -14,6 +15,7 @@ const ActiveBookingsSchema = new mongoose.Schema<ActiveBookings>({
     customerSocketId: {type: String, required: true},
     workerId: {type: String, required: true},
     status: {type: String, enum: ["pending", "accepted", "rejected", "in-transit", "completed", "cancelled"], default: "pending"},
+    requestedPaymentAmount: {type: Number},
     createdAt: {type: Date, default: Date.now},
 })
 
