@@ -433,7 +433,7 @@ app.post("/notify-payment-result", async (req, res) => {
 
 
 app.get("/check-server", (req, res)=>{
-  res.send("Checking server is running");
+  res.send("I am Updated Now");
 })
 
 const PORT = Number(process.env.PORT) || 4000;
